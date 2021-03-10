@@ -182,6 +182,15 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; #(
           endcase
       end
 
+      // Zero extension + Reordering for FP conversions
+      OpQueueAdjustFPCvt: begin
+        unique case (cmd.eew)
+          EW16: conv_operand = {32'b0, ibuf_operand[32 + 8*select +: 16], ibuf_operand[8*select +: 16]};
+          EW32: conv_operand = {32'b0, ibuf_operand[8*select +: 32]};
+          default:;
+        endcase
+      end
+
       default:;
     endcase
   end: type_conversion
@@ -211,7 +220,8 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; #(
       // Count the used elements
       unique case (cmd.conv)
         OpQueueConversionSExt2,
-        OpQueueConversionZExt2:
+        OpQueueConversionZExt2,
+        OpQueueAdjustFPCvt:
           if (SupportIntExt2)
             vl_d = vl_q + (1 << (int'(EW64) - int'(cmd.eew))) / 2;
         OpQueueConversionSExt4,
@@ -228,7 +238,7 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; #(
 
       // Update the pointer to the input operand
       unique case (cmd.conv)
-        OpQueueConversionSExt2, OpQueueConversionZExt2: if (SupportIntExt2) select_d = select_q + 4;
+        OpQueueConversionSExt2, OpQueueConversionZExt2, OpQueueAdjustFPCvt: if (SupportIntExt2) select_d = select_q + 4;
         OpQueueConversionSExt4, OpQueueConversionZExt4: if (SupportIntExt4) select_d = select_q + 2;
         OpQueueConversionSExt8, OpQueueConversionZExt8: if (SupportIntExt8) select_d = select_q + 1;
         default:; // Do nothing.

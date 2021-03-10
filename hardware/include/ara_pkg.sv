@@ -115,7 +115,8 @@ package ara_pkg;
     OpQueueConversionZExt4,
     OpQueueConversionSExt4,
     OpQueueConversionZExt8,
-    OpQueueConversionSExt8
+    OpQueueConversionSExt8,
+    OpQueueAdjustFPCvt
   } opqueue_conversion_e;
 
   /***************************
