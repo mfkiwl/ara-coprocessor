@@ -72,7 +72,7 @@ package ara_pkg;
     VDIVU, VDIV, VREMU, VREM,
     // FPU
     VFADD, VFSUB, VFRSUB, VFMUL, VFMACC, VFMADD, VFMIN, VFMAX,
-    VFCVTXUF, VFCVTXF, VFCVTFXU, VFCVTFX, VFCVTRTZXUF, VFCVTRTZXF,
+    VFCVTXUF, VFCVTXF, VFCVTFXU, VFCVTFX, VFCVTRTZXUF, VFCVTRTZXF, VFCVTFF,
     // Mask operations
     VMANDNOT, VMAND, VMOR, VMXOR, VMORNOT, VMNAND, VMNOR, VMXNOR,
     // Integer comparison instructions
@@ -106,7 +106,7 @@ package ara_pkg;
   // an element of width SEW for the functional units. The operand queues support the following
   // type conversions:
 
-  localparam int unsigned NumConversions = 7;
+  localparam int unsigned NumConversions = 8;
 
   typedef enum logic [$clog2(NumConversions)-1:0] {
     OpQueueConversionNone,
@@ -118,6 +118,15 @@ package ara_pkg;
     OpQueueConversionSExt8,
     OpQueueAdjustFPCvt
   } opqueue_conversion_e;
+  // OpQueueAdjustFPCvt is introduced to support widening FP conversions, to comply with the
+  // required SIMD input format of the FPU module (fpnew)
+
+  // The FPU needs to know if, during the conversion, there is also a width change
+  typedef enum logic [1:0] {
+    CVT_SAME,
+    CVT_WIDE,
+    CVT_NARROW
+  } fp_resize_e;
 
   /***************************
    *  Accelerator interface  *
@@ -175,6 +184,8 @@ package ara_pkg;
 
     // Rounding-Mode for FP operations
     fpnew_pkg::roundmode_e fp_rm;
+    // Resizing of FP conversions
+    fp_resize_e fp_cvt_resize;
 
     // Vector machine metadata
     vlen_t vl;
@@ -259,6 +270,8 @@ package ara_pkg;
 
     // Rounding-Mode for FP operations
     fpnew_pkg::roundmode_e fp_rm;
+    // Resizing of FP conversions
+    fp_resize_e fp_cvt_resize;
 
     // Vector machine metadata
     vlen_t vl;
@@ -497,6 +510,8 @@ package ara_pkg;
     logic swap_vs2_vd_op; // If asserted: vs2 is kept in MulFPU opqueue C, and vd_op in MulFPU A
 
     fpnew_pkg::roundmode_e fp_rm; // Rounding-Mode for FP operations
+    fp_resize_e fp_cvt_resize; // Resizing of FP conversions
+
 
     // Vector machine metadata
     vlen_t vl;

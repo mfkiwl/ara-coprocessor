@@ -96,7 +96,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; #(
   function automatic vfu_e vfu(ara_op_e op);
     unique case (op) inside
       [VADD:VMERGE]   : vfu = VFU_Alu;
-      [VMUL:VFCVTRTZXF]: vfu = VFU_MFpu;
+      [VMUL:VFCVTFF]  : vfu = VFU_MFpu;
       [VMANDNOT:VMSBC]: vfu = VFU_MaskUnit;
       [VLE:VLXE]      : vfu = VFU_LoadUnit;
       [VSE:VSXE]      : vfu = VFU_StoreUnit;
@@ -207,6 +207,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; #(
               use_vd        : ara_req_i.use_vd,
               emul          : ara_req_i.emul,
               fp_rm         : ara_req_i.fp_rm,
+              fp_cvt_resize : ara_req_i.fp_cvt_resize,
               vl            : ara_req_i.vl,
               vstart        : ara_req_i.vstart,
               vtype         : ara_req_i.vtype,
