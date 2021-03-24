@@ -8,13 +8,13 @@
 // Ara's integer multiplier and floating-point unit.
 
 module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*; #(
-    parameter int  unsigned NrLanes   = 0,
+    parameter int  unsigned NrLanes    = 0,
     // Type used to address vector register file elements
-    parameter type          vaddr_t   = logic,
+    parameter type          vaddr_t    = logic,
     // Dependant parameters. DO NOT CHANGE!
-    parameter int  unsigned DataWidth = $bits(elen_t),
-    parameter int  unsigned StrbWidth = DataWidth/8,
-    parameter type          strb_t    = logic [DataWidth/8-1:0]
+    localparam int  unsigned DataWidth = $bits(elen_t),
+    localparam int  unsigned StrbWidth = DataWidth/8,
+    localparam type          strb_t    = logic [DataWidth/8-1:0]
   ) (
     input  logic                         clk_i,
     input  logic                         rst_ni,
@@ -770,15 +770,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*; #(
       if (vinsn_queue_d.commit_cnt == '0)
         commit_cnt_d = vfu_operation_i.vl;
 
-      // Check for NaN boxing of scalar operands
-      if (vfu_operation_i.op inside {[VFADD:VFSGNJX]} && vfu_operation_i.use_scalar_op) begin
-        case (vfu_operation_i.vtype.vsew)
-          EW16: if (~(&vfu_operation_i.scalar_op[63:16])) vinsn_queue_d.vinsn[vinsn_queue_q.accept_pnt].scalar_op = 64'h0000000000007e00;
-          EW32: if (~(&vfu_operation_i.scalar_op[63:32])) vinsn_queue_d.vinsn[vinsn_queue_q.accept_pnt].scalar_op = 64'h000000007fc00000;
-        endcase
-      end
       // Floating-Point re-encoding for widening operations
-      // Take the NaN_box-already-checked scalar operand!
       if (vfu_operation_i.wide_fp_imm) begin
         unique case (vfu_operation_i.vtype.vsew)
           EW32: begin
