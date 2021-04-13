@@ -6,6 +6,33 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## 1.2.0 - 2020-04-12
+
+### Added
+- Hardware support for:
+  - Vector slide instructions (vslideup, vslide1up, vfslide1up, vslidedown, vslide1down, vfslide1down)
+- Software implementation of a integer 2D convolution kernel
+- CI job to check the conv2d execution on Ara
+
+### Fixed
+- Removed dependency to a specific gcc g++ version in Makefile
+- Arithmetic and memory vector instructions with `vl == 0` are considered as a `NOP`
+- Increment bit width of the vector length type (`vlen_t`), accounting for vectors whose length is `VLMAX`
+- Fix vector length calculation for the `MaskB` operand, which depends on `vsew`
+- Fix typo on the `vrf_pnt` updating logic at the Mask Unit
+- Update README to highlight dependency with Spike
+- Update Bender's link dependency to the public CVA6 repository
+- Retrigger the `compile` module if the ModelSim compilation did not succeed
+
+### Changed
+- The `encoding.h` in the common Ara runtime is now a copy from the `encoding.h` in the Spike submodule
+
+## 1.1.1 - 2020-03-25
+
+### Added
+
+- Parametrization for FPU and FPU-specific formats support, through the `FPUSupport` ara_soc parameter
+
 ## 1.1.0 - 2020-03-18
 
 ### Added

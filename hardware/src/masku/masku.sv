@@ -10,8 +10,8 @@
 // predicated instructions.
 
 module masku import ara_pkg::*; import rvv_pkg::*; #(
-    parameter int  unsigned NrLanes    = 0,
-    parameter type          vaddr_t    = logic,                // Type used to address vector register file elements
+    parameter  int  unsigned NrLanes   = 0,
+    parameter  type          vaddr_t   = logic,                // Type used to address vector register file elements
     // Dependant parameters. DO NOT CHANGE!
     localparam int  unsigned DataWidth = $bits(elen_t),        // Width of the lane datapath
     localparam int  unsigned StrbWidth = DataWidth/8,
@@ -39,7 +39,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
     output logic     [NrLanes-1:0]      mask_valid_o,
     input  logic     [NrLanes-1:0]      lane_mask_ready_i,
     input  logic                        vldu_mask_ready_i,
-    input  logic                        vstu_mask_ready_i
+    input  logic                        vstu_mask_ready_i,
+    input  logic                        sldu_mask_ready_i
   );
 
   import cf_math_pkg::idx_width;
@@ -490,14 +491,14 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
             result_queue_d[result_queue_write_pnt_q][lane] = '{
               wdata: result_queue_q[result_queue_write_pnt_q][lane].wdata | alu_result[lane],
               be   : be(element_cnt, vinsn_issue.vtype.vsew),
-              addr : vaddr(vinsn_issue.vd, NrLanes) + (((vinsn_issue.vl - issue_cnt_q) / NrLanes / 8) >> (int'(EW64) - int'(vinsn_issue.vtype.vsew))),
+              addr : vaddr(vinsn_issue.vd, NrLanes) + (((vinsn_issue.vl - issue_cnt_q) / NrLanes / DataWidth)),
               id   : vinsn_issue.id
             };
           end
 
           // Increment the VRF pointer
           if (vinsn_issue.op inside {VMSEQ, VMSNE, VMSLT, VMSLTU, VMSLE, VMSLEU, VMSGT, VMSGTU, VMADC, VMSBC}) begin
-            vrf_pnt_d = vrf_pnt_q + NrLanes << (int'(EW64) - vinsn_issue.vtype.vsew);
+            vrf_pnt_d = vrf_pnt_q + (NrLanes << (int'(EW64) - vinsn_issue.vtype.vsew));
 
             // Filled-up a word, or finished execution
             if (vrf_pnt_d == DataWidth*NrLanes || vrf_pnt_d >= issue_cnt_q) begin
@@ -561,7 +562,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
       // Received a grant from the VFUs.
       // The VLDU and the VSTU acknowledge all the operands at once.
       // Deactivate the request, but do not bump the pointers for now.
-      if (lane_mask_ready_i[lane] || vldu_mask_ready_i || vstu_mask_ready_i) begin
+      if (lane_mask_ready_i[lane] || vldu_mask_ready_i || vstu_mask_ready_i || sldu_mask_ready_i) begin
         mask_queue_valid_d[mask_queue_read_pnt_q][lane] = 1'b0;
         mask_queue_d[mask_queue_read_pnt_q][lane]       = '0;
       end
@@ -651,9 +652,19 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
       if (vinsn_queue_d.issue_cnt == '0) begin
         issue_cnt_d = pe_req_i.vl;
         read_cnt_d  = pe_req_i.vl;
+
+        // Trim skipped words
+        if (pe_req_i.op == VSLIDEUP) begin
+          issue_cnt_d -= vlen_t'(pe_req_i.stride);
+          read_cnt_d -= vlen_t'(pe_req_i.stride);
+        end
       end
-      if (vinsn_queue_d.commit_cnt == '0)
+      if (vinsn_queue_d.commit_cnt == '0) begin
         commit_cnt_d = pe_req_i.vl;
+        // Trim skipped words
+        if (pe_req_i.op == VSLIDEUP)
+          commit_cnt_d -= vlen_t'(pe_req_i.stride);
+      end
 
       // Bump pointers and counters of the vector instruction queue
       vinsn_queue_d.issue_cnt += 1;

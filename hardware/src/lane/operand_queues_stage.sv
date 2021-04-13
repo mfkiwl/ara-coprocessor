@@ -6,7 +6,9 @@
 // Description:
 // This stage holds the operand queues, holding elements for the VRFs.
 
-module operand_queues_stage import ara_pkg::*; import rvv_pkg::*; (
+module operand_queues_stage import ara_pkg::*; import rvv_pkg::*; #(
+    parameter fpu_support_e FPUSupport = FPUSupportHalfSingleDouble // Support for floating-point data types
+  ) (
     input  logic                                     clk_i,
     input  logic                                     rst_ni,
     // Interface with the Vector Register File
@@ -30,10 +32,11 @@ module operand_queues_stage import ara_pkg::*; import rvv_pkg::*; (
     output elen_t                                    stu_operand_o,
     output logic                                     stu_operand_valid_o,
     input  logic                                     stu_operand_ready_i,
-    // Address Generation unit
-    output elen_t                                    addrgen_operand_o,
-    output logic                                     addrgen_operand_valid_o,
+    // Slide Unit/Address Generation unit
+    output elen_t                                    sldu_addrgen_operand_o,
+    output logic                                     sldu_addrgen_operand_valid_o,
     input  logic                                     addrgen_operand_ready_i,
+    input  logic                                     sldu_operand_ready_i,
     // Mask unit
     output elen_t              [1:0]                 mask_operand_o,
     output logic               [1:0]                 mask_operand_valid_o,
@@ -45,10 +48,11 @@ module operand_queues_stage import ara_pkg::*; import rvv_pkg::*; (
    *********/
 
   operand_queue #(
-    .BufferDepth   (5   ),
-    .SupportIntExt2(1'b1),
-    .SupportIntExt4(1'b1),
-    .SupportIntExt8(1'b1)
+    .BufferDepth   (5         ),
+    .FPUSupport    (FPUSupport),
+    .SupportIntExt2(1'b1      ),
+    .SupportIntExt4(1'b1      ),
+    .SupportIntExt8(1'b1      )
   ) i_operand_queue_alu_a (
     .clk_i                    (clk_i                          ),
     .rst_ni                   (rst_ni                         ),
@@ -64,10 +68,11 @@ module operand_queues_stage import ara_pkg::*; import rvv_pkg::*; (
   );
 
   operand_queue #(
-    .BufferDepth   (5   ),
-    .SupportIntExt2(1'b1),
-    .SupportIntExt4(1'b1),
-    .SupportIntExt8(1'b1)
+    .BufferDepth   (5         ),
+    .FPUSupport    (FPUSupport),
+    .SupportIntExt2(1'b1      ),
+    .SupportIntExt4(1'b1      ),
+    .SupportIntExt8(1'b1      )
   ) i_operand_queue_alu_b (
     .clk_i                    (clk_i                          ),
     .rst_ni                   (rst_ni                         ),
@@ -87,8 +92,9 @@ module operand_queues_stage import ara_pkg::*; import rvv_pkg::*; (
    ********************/
 
   operand_queue #(
-    .BufferDepth   (5    ),
-    .SupportIntExt2(1'b1 )
+    .BufferDepth   (5         ),
+    .FPUSupport    (FPUSupport),
+    .SupportIntExt2(1'b1      )
   ) i_operand_queue_mfpu_a (
     .clk_i                    (clk_i                             ),
     .rst_ni                   (rst_ni                            ),
@@ -104,8 +110,9 @@ module operand_queues_stage import ara_pkg::*; import rvv_pkg::*; (
   );
 
   operand_queue #(
-    .BufferDepth   (5    ),
-    .SupportIntExt2(1'b1 )
+    .BufferDepth   (5         ),
+    .FPUSupport    (FPUSupport),
+    .SupportIntExt2(1'b1      )
   ) i_operand_queue_mfpu_b (
     .clk_i                    (clk_i                             ),
     .rst_ni                   (rst_ni                            ),
@@ -121,8 +128,9 @@ module operand_queues_stage import ara_pkg::*; import rvv_pkg::*; (
   );
 
   operand_queue #(
-    .BufferDepth   (5    ),
-    .SupportIntExt2(1'b1 )
+    .BufferDepth   (5         ),
+    .FPUSupport    (FPUSupport),
+    .SupportIntExt2(1'b1      )
   ) i_operand_queue_mfpu_c (
     .clk_i                    (clk_i                             ),
     .rst_ni                   (rst_ni                            ),
@@ -142,7 +150,8 @@ module operand_queues_stage import ara_pkg::*; import rvv_pkg::*; (
    *********************/
 
   operand_queue #(
-    .BufferDepth(2)
+    .BufferDepth(2         ),
+    .FPUSupport (FPUSupport)
   ) i_operand_queue_st_mask_a (
     .clk_i                    (clk_i                         ),
     .rst_ni                   (rst_ni                        ),
@@ -157,20 +166,25 @@ module operand_queues_stage import ara_pkg::*; import rvv_pkg::*; (
     .operand_ready_i          (stu_operand_ready_i           )
   );
 
+  /****************
+   *  Slide Unit  *
+   ****************/
+
   operand_queue #(
-    .BufferDepth(2)
-  ) i_operand_queue_addrgen_a (
-    .clk_i                    (clk_i                               ),
-    .rst_ni                   (rst_ni                              ),
-    .operand_queue_cmd_i      (operand_queue_cmd_i[AddrGenA]       ),
-    .operand_queue_cmd_valid_i(operand_queue_cmd_valid_i[AddrGenA] ),
-    .operand_i                (operand_i[AddrGenA]                 ),
-    .operand_valid_i          (operand_valid_i[AddrGenA]           ),
-    .operand_issued_i         (operand_issued_i[AddrGenA]          ),
-    .operand_queue_ready_o    (operand_queue_ready_o[AddrGenA]     ),
-    .operand_o                (addrgen_operand_o                   ),
-    .operand_valid_o          (addrgen_operand_valid_o             ),
-    .operand_ready_i          (addrgen_operand_ready_i             )
+    .BufferDepth(2         ),
+    .FPUSupport (FPUSupport)
+  ) i_operand_queue_slide_addrgen_a (
+    .clk_i                    (clk_i                                         ),
+    .rst_ni                   (rst_ni                                        ),
+    .operand_queue_cmd_i      (operand_queue_cmd_i[SlideAddrGenA]            ),
+    .operand_queue_cmd_valid_i(operand_queue_cmd_valid_i[SlideAddrGenA]      ),
+    .operand_i                (operand_i[SlideAddrGenA]                      ),
+    .operand_valid_i          (operand_valid_i[SlideAddrGenA]                ),
+    .operand_issued_i         (operand_issued_i[SlideAddrGenA]               ),
+    .operand_queue_ready_o    (operand_queue_ready_o[SlideAddrGenA]          ),
+    .operand_o                (sldu_addrgen_operand_o                        ),
+    .operand_valid_o          (sldu_addrgen_operand_valid_o                  ),
+    .operand_ready_i          (addrgen_operand_ready_i | sldu_operand_ready_i)
   );
 
   /***************
@@ -178,7 +192,8 @@ module operand_queues_stage import ara_pkg::*; import rvv_pkg::*; (
    ***************/
 
   operand_queue #(
-    .BufferDepth(1)
+    .BufferDepth(1         ),
+    .FPUSupport (FPUSupport)
   ) i_operand_queue_mask_b (
     .clk_i                    (clk_i                           ),
     .rst_ni                   (rst_ni                          ),

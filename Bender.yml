@@ -5,12 +5,12 @@ package:
     - "Matteo Perotti <mperotti@iis.ee.ethz.ch>"
     - "Basile Bougenot <basileb@student.ethz.ch>"
     - "Nils Wistoff <nwistoff@iis.ee.ethz.ch>"
-    - "Paul Scheffler <pscheffler@iis.ee.ethz.ch>"
+    - "Paul Scheffler <paulsc@iis.ee.ethz.ch>"
 
 dependencies:
   axi:                { git: "https://github.com/pulp-platform/axi.git",                rev: axi_llc    }
   common_cells:       { git: "https://github.com/pulp-platform/common_cells.git",       version: 1.19.0 }
-  cva6:               { git: "git@iis-git.ee.ethz.ch:ara_release/cva6.git",             rev: rvv        }
+  cva6:               { git: "https://github.com/pulp-platform/cva6.git",               rev: acc_port   }
   tech_cells_generic: { git: "https://github.com/pulp-platform/tech_cells_generic.git", version: 0.2.1  }
 
 workspace:
@@ -37,6 +37,7 @@ sources:
     - hardware/src/lane/simd_mul.sv
     - hardware/src/lane/vector_regfile.sv
     - hardware/src/masku/masku.sv
+    - hardware/src/sldu/sldu.sv
     - hardware/src/vlsu/addrgen.sv
     - hardware/src/vlsu/vldu.sv
     - hardware/src/vlsu/vstu.sv
@@ -61,7 +62,7 @@ sources:
         # Level 2
         - hardware/tb/ara_tb.sv
 
-    - target: ara_test and not(verilator)
-      files:
-        # Level 2
-        - hardware/tb/ara_tb_verilator.sv
+        - target: verilator
+          files:
+            # Level 2
+            - hardware/tb/ara_tb_verilator.sv

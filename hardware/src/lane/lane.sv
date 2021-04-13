@@ -8,16 +8,17 @@
 // together with the execution units.
 
 module lane import ara_pkg::*; import rvv_pkg::*; #(
-    parameter int  unsigned NrLanes          = 1,                                   // Number of lanes
+    parameter  int           unsigned NrLanes         = 1,                                   // Number of lanes
+    parameter  fpu_support_e          FPUSupport      = FPUSupportHalfSingleDouble,          // Support for floating-point data types
     // Dependant parameters. DO NOT CHANGE!
     // VRF Parameters
-    localparam int  unsigned MaxVLenPerLane  = VLEN / NrLanes,                      // In bits
-    localparam int  unsigned MaxVLenBPerLane = VLENB / NrLanes,                     // In bytes
-    localparam int  unsigned VRFSizePerLane  = MaxVLenPerLane * 32,                 // In bits
-    localparam int  unsigned VRFBSizePerLane = MaxVLenBPerLane * 32,                // In bytes
-    localparam type          vaddr_t         = logic [$clog2(VRFBSizePerLane)-1:0], // Address of an element in the lane's VRF
-    localparam int  unsigned DataWidth       = $bits(elen_t),                       // Width of the lane datapath
-    localparam type          strb_t          = logic [DataWidth/8-1:0]              // Byte-strobe type
+    localparam int           unsigned MaxVLenPerLane  = VLEN / NrLanes,                      // In bits
+    localparam int           unsigned MaxVLenBPerLane = VLENB / NrLanes,                     // In bytes
+    localparam int           unsigned VRFSizePerLane  = MaxVLenPerLane * 32,                 // In bits
+    localparam int           unsigned VRFBSizePerLane = MaxVLenBPerLane * 32,                // In bytes
+    localparam type                   vaddr_t         = logic [$clog2(VRFBSizePerLane)-1:0], // Address of an element in the lane's VRF
+    localparam int           unsigned DataWidth       = $bits(elen_t),                       // Width of the lane datapath
+    localparam type                   strb_t          = logic [DataWidth/8-1:0]              // Byte-strobe type
   ) (
     input  logic                                           clk_i,
     input  logic                                           rst_ni,
@@ -39,9 +40,10 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     output elen_t                                          stu_operand_o,
     output logic                                           stu_operand_valid_o,
     input  logic                                           stu_operand_ready_i,
-    // Interface with the Address Generation unit
-    output elen_t                                          addrgen_operand_o,
-    output logic                                           addrgen_operand_valid_o,
+    // Interface with the Slide/Address Generation unit
+    output elen_t                                          sldu_addrgen_operand_o,
+    output logic                                           sldu_addrgen_operand_valid_o,
+    input  logic                                           sldu_operand_ready_i,
     input  logic                                           addrgen_operand_ready_i,
     // Interface with the Slide unit
     input  logic                                           sldu_result_req_i,
@@ -250,38 +252,41 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   logic  [2:0] mfpu_operand_valid;
   logic  [2:0] mfpu_operand_ready;
 
-  operand_queues_stage i_operand_queues (
-    .clk_i                    (clk_i                                             ),
-    .rst_ni                   (rst_ni                                            ),
+  operand_queues_stage #(
+    .FPUSupport(FPUSupport)
+  ) i_operand_queues (
+    .clk_i                        (clk_i                                             ),
+    .rst_ni                       (rst_ni                                            ),
     // Interface with the Vector Register File
-    .operand_i                (vrf_operand                                       ),
-    .operand_valid_i          (vrf_operand_valid                                 ),
+    .operand_i                    (vrf_operand                                       ),
+    .operand_valid_i              (vrf_operand_valid                                 ),
     // Interface with the operand requester
-    .operand_issued_i         (operand_issued                                    ),
-    .operand_queue_ready_o    (operand_queue_ready                               ),
-    .operand_queue_cmd_i      (operand_queue_cmd                                 ),
-    .operand_queue_cmd_valid_i(operand_queue_cmd_valid                           ),
+    .operand_issued_i             (operand_issued                                    ),
+    .operand_queue_ready_o        (operand_queue_ready                               ),
+    .operand_queue_cmd_i          (operand_queue_cmd                                 ),
+    .operand_queue_cmd_valid_i    (operand_queue_cmd_valid                           ),
     // Interface with the VFUs
     // ALU
-    .alu_operand_o            (alu_operand                                       ),
-    .alu_operand_valid_o      (alu_operand_valid                                 ),
-    .alu_operand_ready_i      (alu_operand_ready                                 ),
+    .alu_operand_o                (alu_operand                                       ),
+    .alu_operand_valid_o          (alu_operand_valid                                 ),
+    .alu_operand_ready_i          (alu_operand_ready                                 ),
     // Multiplier/FPU
-    .mfpu_operand_o           (mfpu_operand                                      ),
-    .mfpu_operand_valid_o     (mfpu_operand_valid                                ),
-    .mfpu_operand_ready_i     (mfpu_operand_ready                                ),
+    .mfpu_operand_o               (mfpu_operand                                      ),
+    .mfpu_operand_valid_o         (mfpu_operand_valid                                ),
+    .mfpu_operand_ready_i         (mfpu_operand_ready                                ),
     // Store Unit
-    .stu_operand_o            (stu_operand_o                                     ),
-    .stu_operand_valid_o      (stu_operand_valid_o                               ),
-    .stu_operand_ready_i      (stu_operand_ready_i                               ),
+    .stu_operand_o                (stu_operand_o                                     ),
+    .stu_operand_valid_o          (stu_operand_valid_o                               ),
+    .stu_operand_ready_i          (stu_operand_ready_i                               ),
     // Address Generation Unit
-    .addrgen_operand_o        (addrgen_operand_o                                 ),
-    .addrgen_operand_valid_o  (addrgen_operand_valid_o                           ),
-    .addrgen_operand_ready_i  (addrgen_operand_ready_i                           ),
+    .sldu_addrgen_operand_o       (sldu_addrgen_operand_o                            ),
+    .sldu_addrgen_operand_valid_o (sldu_addrgen_operand_valid_o                      ),
+    .sldu_operand_ready_i         (sldu_operand_ready_i                              ),
+    .addrgen_operand_ready_i      (addrgen_operand_ready_i                           ),
     // Mask Unit
-    .mask_operand_o           ({mask_operand_o[2], mask_operand_o[0]}            ),
-    .mask_operand_valid_o     ({mask_operand_valid_o[2], mask_operand_valid_o[0]}),
-    .mask_operand_ready_i     ({mask_operand_ready_i[2], mask_operand_ready_i[0]})
+    .mask_operand_o               ({mask_operand_o[2], mask_operand_o[0]}            ),
+    .mask_operand_valid_o         ({mask_operand_valid_o[2], mask_operand_valid_o[0]}),
+    .mask_operand_ready_i         ({mask_operand_ready_i[2], mask_operand_ready_i[0]})
   );
 
   /*****************************
@@ -289,8 +294,9 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
    *****************************/
 
   vector_fus_stage #(
-    .NrLanes(NrLanes),
-    .vaddr_t(vaddr_t)
+    .NrLanes   (NrLanes   ),
+    .FPUSupport(FPUSupport),
+    .vaddr_t   (vaddr_t   )
   ) i_vfus (
     .clk_i                (clk_i                  ),
     .rst_ni               (rst_ni                 ),
