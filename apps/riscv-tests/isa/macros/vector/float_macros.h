@@ -5,6 +5,11 @@
 // Author: Matheus Cavalcante <matheusd@iis.ee.ethz.ch>
 //         Matteo Perotti <mperotti@iis.ee.ethz.ch>
 
+#ifndef __FLOAT_MACROS_H__
+#define __FLOAT_MACROS_H__
+
+#include <stdint.h>
+
 // Zero encoding is common to all the formats
 #define pZero  0x0
 
@@ -61,16 +66,16 @@ typedef union double_hex {
 } double_hex;
 
 // Check fcsr.fflags against an expected FFLAGS value
-#define CHECK_FFLAGS(FFLAGS)                                                                           \
-  do {                                                                                                 \
-    uint64_t gold_ff = FFLAGS;                                                                         \
-    uint64_t      ff;                                                                                  \
-    asm volatile ("frflags %0" : "=r" (ff));                                                           \
-    if (ff != gold_ff) {                                                                               \
-      printf("fflags check FAILED. Current fflags is 0x%02x, while expecting 0x%02x.\n", ff, gold_ff); \
-      num_failed++;                                                                                    \
-      return;                                                                                          \
-    }                                                                                                  \
+#define CHECK_FFLAGS(FFLAGS)                                                                             \
+  do {                                                                                                   \
+    uint64_t gold_ff = FFLAGS;                                                                           \
+    uint64_t      ff;                                                                                    \
+    asm volatile ("frflags %0" : "=r" (ff));                                                             \
+    if (ff != gold_ff) {                                                                                 \
+      printf("fflags check FAILED. Current fflags is 0x%02lx, while expecting 0x%02lx.\n", ff, gold_ff); \
+      num_failed++;                                                                                      \
+      return;                                                                                            \
+    }                                                                                                    \
   } while(0)
 
 // Change rounding-mode
@@ -138,3 +143,5 @@ typedef union double_hex {
     nan_boxed_val.ui64 = VAL_64B;               \
     VAR_NAME = nan_boxed_val.d;                 \
   } while(0)
+
+#endif // __FLOAT_MACROS_H__

@@ -11,6 +11,8 @@ This file specifies the functionalities of the RISC-V Vector Specification suppo
 
 - Vector unit-strided loads: `vle<eew>, vl1r.v`
 - Vector unit-strided stores: `vse<eew>`, `vs1r.v`
+- Vector strided loads: `vlse<eew>`
+- Vector strided stores: `vsse<eew>`
 
 ## Vector Integer Arithmetic Instructions
 
@@ -30,6 +32,7 @@ This file specifies the functionalities of the RISC-V Vector Specification suppo
 - Vector widening integer multiply-add instructions: `vwmaccu`, `vwmacc`, `vwmaccsu`, `vwmaccus`
 - Vector integer merge instructions: `vmerge`
 - Vector integer move instructions: `vmv`
+- Vector whole-register move instructions: `vmv<nr>r`
 
 ## Vector Floating-Point Instructions
 
@@ -43,6 +46,10 @@ This file specifies the functionalities of the RISC-V Vector Specification suppo
 - Vector floating-point sign-injection instructions: `vfsgnj`, `vfsgnjn`, `vfsgnjx`
 - Vector floating-point merge instruction: `vfmerge`
 - Vector floating-point move instruction: `vfmv`
+- Vector floating-point compare instructions: `vmfeq`, `vmfne`, `vmflt`, `vmfle`, `vmfgt`, `vmfge`
+- Vector single-width floating-point/integer type-convert instructions:`vfcvt.xu.f`, `vfcvt.x.f`, `vfcvt.rtz.xu.f`, `vfcvt.rtz.x.f`, `vfcvt.f.xu`, `vfcvt.f.x`
+- Vector widening floating-point/integer type-convert instructions: `vfwcvt.xu.f`, `vfwcvt.x.f`, `vfwcvt.rtz.xu.f`, `vfwcvt.rtz.x.f`, `vfwcvt.f.xu`, `vfwcvt.f.x`, `vfwcvt.f.f`
+- Vector narrowing floating-point/integer type-convert instructions: `vfncvt.xu.f`, `vfncvt.x.f`, `vfncvt.rtz.xu.f`, `vfncvt.rtz.x.f`, `vfncvt.f.xu`, `vfncvt.f.x`, `vfncvt.f.f`
 
 ## Vector mask instructions
 

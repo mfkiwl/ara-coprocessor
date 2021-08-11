@@ -14,6 +14,45 @@ jobs:
 #  Toolchain stage  #
 #####################
 
+  tc-llvm:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Recover the submodule commit hash
+      id: recover_hash
+      run: |
+        git submodule status toolchain/riscv-llvm | cut -d' ' -f1
+        echo "tc-llvm-hash=`git submodule status toolchain/riscv-llvm | cut -d' ' -f1`" >> $GITHUB_ENV
+    - name: Cache the LLVM toolchain
+      uses: actions/cache@v2
+      id: tc-llvm-cache
+      env:
+        cache-name: cache-llvm
+      with:
+        path: install/riscv-llvm
+        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.tc-llvm-hash }}
+        restore-keys:
+          ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.tc-llvm-hash }}
+    - name: Download the LLVM toolchain
+      if: steps.tc-llvm-cache.outputs.cache-hit != 'true'
+      run: git submodule update --init --recursive -- toolchain/riscv-llvm
+    - name: Download Newlib
+      if: steps.tc-llvm-cache.outputs.cache-hit != 'true'
+      run: git submodule update --init --recursive -- toolchain/newlib
+    - name: Compile LLVM
+      if: steps.tc-llvm-cache.outputs.cache-hit != 'true'
+      run: |
+        sudo apt-get install libmpc-dev
+        sudo apt-get install -y ninja-build
+        CC=gcc CXX=g++ make toolchain-llvm
+    - name: Tar LLVM
+      run: tar -cvf tc-llvm.tar install/riscv-llvm
+    - name: Upload LLVM
+      uses: actions/upload-artifact@v2
+      with:
+        name: tc-llvm
+        path: tc-llvm.tar
+
   tc-gcc:
     runs-on: ubuntu-latest
     steps:
@@ -40,7 +79,7 @@ jobs:
       if: steps.tc-gcc-cache.outputs.cache-hit != 'true'
       run: |
         sudo apt-get install libmpc-dev
-        CC=gcc CXX=g++ make toolchain
+        CC=gcc CXX=g++ make toolchain-gcc
     - name: Tar GCC
       run: tar -cvf tc-gcc.tar install/riscv-gcc
     - name: Upload GCC
@@ -100,9 +139,9 @@ jobs:
         cache-name: cache-verilator
       with:
         path: install/verilator
-        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.tc-verilator-hash }}
+        key: ${{ runner.os }}-build-llvm10-${{ env.cache-name }}-${{ env.tc-verilator-hash }}
         restore-keys:
-          ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.tc-verilator-hash }}
+          ${{ runner.os }}-build-llvm10-${{ env.cache-name }}-${{ env.tc-verilator-hash }}
     - name: Download Verilator
       if: steps.tc-verilator-cache.outputs.cache-hit != 'true'
       run: |
@@ -126,30 +165,36 @@ jobs:
 
   compile-apps:
     runs-on: ubuntu-latest
-    needs: tc-gcc
+    strategy:
+      matrix:
+        ara_config: [2_lanes, 4_lanes, 8_lanes, 16_lanes]
+    needs: tc-llvm
     steps:
     - uses: actions/checkout@v2
     - name: Download Spike
       run: |
         git submodule update --init --recursive -- toolchain/riscv-isa-sim
         git submodule foreach --recursive git reset --hard
-    - name: Download the GCC toolchain
+    - name: Download the LLVM toolchain
       uses: actions/download-artifact@v2
       with:
-        name: tc-gcc
-    - name: Untar GCC
-      run: tar xvf tc-gcc.tar
+        name: tc-llvm
+    - name: Untar LLVM
+      run: tar xvf tc-llvm.tar
     - name: Compile applications
-      run: make -C apps
+      run: config=${{ matrix.ara_config }} make -C apps
     - name: Upload applications
       uses: actions/upload-artifact@v2
       with:
-        name: compile-apps
+        name: compile-apps-${{ matrix.ara_config }}
         path: apps/bin
 
   compile-riscv-tests:
     runs-on: ubuntu-latest
-    needs: ["tc-gcc", "tc-isa-sim"]
+    strategy:
+      matrix:
+        ara_config: [2_lanes, 4_lanes, 8_lanes, 16_lanes]
+    needs: ["tc-llvm", "tc-gcc", "tc-isa-sim"]
     steps:
     - uses: actions/checkout@v2
     - name: Download Spike
@@ -162,6 +207,12 @@ jobs:
         name: tc-isa-sim
     - name: Untar Spike
       run: tar xvf tc-isa-sim.tar
+    - name: Get LLVM toolchain artifacts
+      uses: actions/download-artifact@v2
+      with:
+        name: tc-llvm
+    - name: Untar LLVM
+      run: tar xvf tc-llvm.tar
     - name: Get GCC toolchain artifacts
       uses: actions/download-artifact@v2
       with:
@@ -169,15 +220,18 @@ jobs:
     - name: Untar GCC
       run: tar xvf tc-gcc.tar
     - name: Compile applications
-      run: make -C apps riscv_tests
+      run: config=${{ matrix.ara_config }} make -C apps riscv_tests
     - name: Upload applications
       uses: actions/upload-artifact@v2
       with:
-        name: compile-riscv-tests
+        name: compile-riscv-tests-${{ matrix.ara_config }}
         path: apps/bin
 
   compile-ara:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ara_config: [2_lanes, 4_lanes, 8_lanes, 16_lanes]
     needs: ["tc-verilator", "tc-isa-sim"]
     steps:
     - uses: actions/checkout@v2
@@ -209,21 +263,25 @@ jobs:
       run: |
         sudo apt-get install libelf-dev
         make -C hardware apply-patches
-        make -C hardware verilate
+        config=${{ matrix.ara_config }} make -C hardware verilate
     - name: Tar Verilated model of Ara
       run: tar -cvf ara.tar hardware/build/verilator hardware/bender
     - name: Upload Ara Verilated model
       uses: actions/upload-artifact@v2
       with:
-        name: compile-ara
+        name: compile-ara-${{ matrix.ara_config }}
         path: ara.tar
 
 ####################
 #  Simulate stage  #
 ####################
 
-  simulate-hello-world:
+  simulate:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app:        [hello_world, imatmul, fmatmul, conv2d]
+        ara_config: [2_lanes, 4_lanes, 8_lanes, 16_lanes]
     needs: ["compile-ara", "compile-apps"]
     steps:
     - uses: actions/checkout@v2
@@ -236,91 +294,16 @@ jobs:
     - name: Get Verilated model of Ara
       uses: actions/download-artifact@v2
       with:
-        name: compile-ara
+        name: compile-ara-${{ matrix.ara_config }}
     - name: Untar Verilated model of Ara
       run: tar xvf ara.tar
     - name: Get applications
       uses: actions/download-artifact@v2
       with:
-        name: compile-apps
+        name: compile-apps-${{ matrix.ara_config }}
         path: apps/bin
     - name: Run test
-      run: make -C hardware app=hello_world simv
-
-  simulate-imatmul:
-    runs-on: ubuntu-latest
-    needs: ["compile-ara", "compile-apps"]
-    steps:
-    - uses: actions/checkout@v2
-    - name: Get Spike artifacts
-      uses: actions/download-artifact@v2
-      with:
-        name: tc-isa-sim
-    - name: Untar Spike
-      run: tar xvf tc-isa-sim.tar
-    - name: Get Verilated model of Ara
-      uses: actions/download-artifact@v2
-      with:
-        name: compile-ara
-    - name: Untar Verilated model of Ara
-      run: tar xvf ara.tar
-    - name: Get applications
-      uses: actions/download-artifact@v2
-      with:
-        name: compile-apps
-        path: apps/bin
-    - name: Run test
-      run: make -C hardware app=imatmul simv
-
-  simulate-fmatmul:
-    runs-on: ubuntu-latest
-    needs: ["compile-ara", "compile-apps"]
-    steps:
-    - uses: actions/checkout@v2
-    - name: Get Spike artifacts
-      uses: actions/download-artifact@v2
-      with:
-        name: tc-isa-sim
-    - name: Untar Spike
-      run: tar xvf tc-isa-sim.tar
-    - name: Get Verilated model of Ara
-      uses: actions/download-artifact@v2
-      with:
-        name: compile-ara
-    - name: Untar Verilated model of Ara
-      run: tar xvf ara.tar
-    - name: Get applications
-      uses: actions/download-artifact@v2
-      with:
-        name: compile-apps
-        path: apps/bin
-    - name: Run test
-      run: make -C hardware app=fmatmul simv
-
-  simulate-conv2d:
-    runs-on: ubuntu-latest
-    needs: ["compile-ara", "compile-apps"]
-    steps:
-    - uses: actions/checkout@v2
-    - name: Get Spike artifacts
-      uses: actions/download-artifact@v2
-      with:
-        name: tc-isa-sim
-    - name: Untar Spike
-      run: tar xvf tc-isa-sim.tar
-    - name: Get Verilated model of Ara
-      uses: actions/download-artifact@v2
-      with:
-        name: compile-ara
-    - name: Untar Verilated model of Ara
-      run: tar xvf ara.tar
-    - name: Get applications
-      uses: actions/download-artifact@v2
-      with:
-        name: compile-apps
-        path: apps/bin
-    - name: Run test
-      run: make -C hardware app=conv2d simv
+      run: config=${{ matrix.ara_config }} app=${{ matrix.app }} make -C hardware simv
 
 ########################
 #  RISC-V Tests stage  #
@@ -328,6 +311,9 @@ jobs:
 
   riscv-tests-simv:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ara_config: [2_lanes, 4_lanes, 8_lanes, 16_lanes]
     needs: ["compile-ara", "compile-riscv-tests"]
     steps:
     - uses: actions/checkout@v2
@@ -340,16 +326,16 @@ jobs:
     - name: Get Verilated model of Ara
       uses: actions/download-artifact@v2
       with:
-        name: compile-ara
+        name: compile-ara-${{ matrix.ara_config }}
     - name: Untar Verilated model of Ara
       run: tar xvf ara.tar
     - name: Get RISC-V tests
       uses: actions/download-artifact@v2
       with:
-        name: compile-riscv-tests
+        name: compile-riscv-tests-${{ matrix.ara_config }}
         path: apps/bin
     - name: Run tests
-      run: make -C hardware -j4 riscv_tests_simv
+      run: config=${{ matrix.ara_config }} make -C hardware -j4 riscv_tests_simv
 
   riscv-tests-spike:
     runs-on: ubuntu-latest
@@ -362,6 +348,12 @@ jobs:
         name: tc-isa-sim
     - name: Untar Spike
       run: tar xvf tc-isa-sim.tar
+    - name: Download the LLVM toolchain
+      uses: actions/download-artifact@v2
+      with:
+        name: tc-llvm
+    - name: Untar LLVM
+      run: tar xvf tc-llvm.tar
     - name: Download the GCC toolchain
       uses: actions/download-artifact@v2
       with:
@@ -380,20 +372,184 @@ jobs:
           apps/riscv-tests/isa/*.dump
           apps/riscv-tests/isa/*.out32
 
+###################
+#  Linting stage  #
+###################
+
+  check-license:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-python@v2
+      with:
+        python-version: 3.x
+    - name: Install Python requirements
+      run: pip install -r python-requirements.txt
+    - name: Check license
+      run: python scripts/licence-checker.py --config scripts/licence-checker.hjson hardware
+
+  check-clang-format:
+    runs-on: ubuntu-latest
+    needs: ['tc-llvm']
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-python@v2
+      with:
+        python-version: 3.x
+    - name: Install Python requirements
+      run: pip install -r python-requirements.txt
+    - name: Download the LLVM toolchain
+      uses: actions/download-artifact@v2
+      with:
+        name: tc-llvm
+    - name: Untar LLVM
+      run: tar xvf tc-llvm.tar
+    - name: Run clang-format
+      run: |
+        for file in `find apps -type f -name "*.[c|h|cpp|hpp]" | grep -vP "apps/riscv-tests"`; do
+          ./scripts/run-clang-format.py --clang-format-executable install/riscv-llvm/bin/clang-format $file || EXIT_STATUS=$?
+        done
+        for file in `find apps/riscv-tests/isa/rv64uv -type f -name "*.[c|h|cpp|hpp]"`; do
+          ./scripts/run-clang-format.py --clang-format-executable install/riscv-llvm/bin/clang-format $file || EXIT_STATUS=$?
+        done
+        exit $EXIT_STATUS
+
+  check-trailing-whitespaces:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+    - name: Determine base commit
+      run: |
+        if [[ -n $GITHUB_BASE_REF ]]; then
+          # Make sure we have the latest version of the target branch
+          git fetch origin $GITHUB_BASE_REF
+          echo "base=origin/$GITHUB_BASE_REF" >> $GITHUB_ENV
+        else
+          echo "base=HEAD~1" >> $GITHUB_ENV
+        fi
+
+    - name: Check for trailing whitespaces and tabs
+      run: git diff --check $base HEAD --
+
+#####################
+#  Benchmark stage  #
+#####################
+
+  benchmark:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ara_config: [2_lanes, 4_lanes, 8_lanes, 16_lanes]
+    needs: ["compile-ara", "compile-apps"]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Download the LLVM toolchain
+      uses: actions/download-artifact@v2
+      with:
+        name: tc-llvm
+    - name: Untar LLVM
+      run: tar xvf tc-llvm.tar
+    - name: Get Spike artifacts
+      uses: actions/download-artifact@v2
+      with:
+        name: tc-isa-sim
+    - name: Untar Spike
+      run: tar xvf tc-isa-sim.tar
+    - name: Get Verilated model of Ara
+      uses: actions/download-artifact@v2
+      with:
+        name: compile-ara-${{ matrix.ara_config }}
+    - name: Untar Verilated model of Ara
+      run: tar xvf ara.tar
+    - name: Benchmark Ara
+      run: config=${{ matrix.ara_config }} ./scripts/benchmark.sh
+    - name: Tar runtime results
+      run: |
+        tar -cvf benchmarks-${{ matrix.ara_config }}.tar *.benchmark
+    - name: Upload runtime results
+      uses: actions/upload-artifact@v2
+      with:
+        name: benchmark-${{ matrix.ara_config }}
+        path: benchmarks-${{ matrix.ara_config }}.tar
+
+  roofline:
+    runs-on: ubuntu-latest
+    needs: benchmark
+    steps:
+    - uses: actions/checkout@v2
+    - name: Get benchmark results (2 lanes)
+      uses: actions/download-artifact@v2
+      with:
+        name: benchmark-2_lanes
+    - name: Get benchmark results (4 lanes)
+      uses: actions/download-artifact@v2
+      with:
+        name: benchmark-4_lanes
+    - name: Get benchmark results (8 lanes)
+      uses: actions/download-artifact@v2
+      with:
+        name: benchmark-8_lanes
+    - name: Get benchmark results (16 lanes)
+      uses: actions/download-artifact@v2
+      with:
+        name: benchmark-16_lanes
+    - name: Untar the results
+      run: |
+        tar xvf benchmarks-2_lanes.tar
+        tar xvf benchmarks-4_lanes.tar
+        tar xvf benchmarks-8_lanes.tar
+        tar xvf benchmarks-16_lanes.tar
+    - name: Install gnuplot
+      run: sudo apt-get install gnuplot
+    - name: Plot the rooflines
+      run: gnuplot -c scripts/benchmark.gnuplot
+    - name: Upload the imatmul roofline
+      uses: actions/upload-artifact@v2
+      with:
+        name: imatmul_roofline
+        path: imatmul.png
+    - name: Upload the fmatmul roofline
+      uses: actions/upload-artifact@v2
+      with:
+        name: fmatmul_roofline
+        path: fmatmul.png
+
 ####################
 #  Clean-up stage  #
 ####################
 
   clean-up:
     runs-on: ubuntu-latest
-    needs: ["simulate-hello-world", "simulate-imatmul", "simulate-fmatmul", "simulate-conv2d", "riscv-tests-spike", "riscv-tests-simv"]
+    if: always()
+    needs: ["simulate", "riscv-tests-spike", "riscv-tests-simv"]
     steps:
       - uses: actions/checkout@v2
       - name: Delete artifacts
         uses: geekyeggo/delete-artifact@v1
         with:
           name: |
+            tc-llvm
             tc-gcc
             tc-isa-sim
             tc-verilator
-            compile-ara
+            riscv-tests-spike
+
+  clean-up-compile-runs:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ara_config: [2_lanes, 4_lanes, 8_lanes, 16_lanes]
+    if: always()
+    needs: ["simulate", "riscv-tests-spike", "riscv-tests-simv"]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Delete artifacts
+        uses: geekyeggo/delete-artifact@v1
+        with:
+          name: |
+            compile-ara-${{ matrix.ara_config }}
+            compile-apps-${{ matrix.ara_config }}
+            compile-riscv-tests-${{ matrix.ara_config }}
+            benchmark-${{ matrix.ara_config }}

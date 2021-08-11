@@ -116,7 +116,9 @@ module ara_tb;
             mem_row[8 * b +: 8] = buffer[w * AxiWideBeWidth + b];
           end
           if (address >= DRAMAddrBase && address < DRAMAddrBase + DRAMLength)
-            dut.i_dram.init_val[(address - DRAMAddrBase + (w << AxiWideByteOffset)) >> AxiWideByteOffset] = mem_row;
+            // This requires the sections to be aligned to AxiWideByteOffset,
+            // otherwise, they can be over-written.
+            dut.i_ara_soc.i_dram.init_val[(address - DRAMAddrBase + (w << AxiWideByteOffset)) >> AxiWideByteOffset] = mem_row;
           else
             $display("Cannot initialize address %x, which doesn't fall into the L2 region.", address);
         end

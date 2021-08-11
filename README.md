@@ -3,7 +3,7 @@
 [![ci](https://github.com/pulp-platform/ara/actions/workflows/ci.yml/badge.svg)](https://github.com/pulp-platform/ara/actions/workflows/ci.yml)
 
 Ara is a vector unit working as a coprocessor for the CVA6 core.
-It supports the RISC-V Vector Extension, [version 0.9](https://github.com/riscv/riscv-v-spec/releases/tag/0.9).
+It supports the RISC-V Vector Extension, [version 0.10](https://github.com/riscv/riscv-v-spec/releases/tag/v0.10).
 
 ## Dependencies
 
@@ -29,13 +29,13 @@ git submodule sync --recursive
 
 ## Toolchain
 
-Ara requires a RISC-V GCC toolchain capable of understanding the vector extension, version 0.9.x.
+Ara requires a RISC-V LLVM toolchain capable of understanding the vector extension, version 0.10.x.
 
 To build this toolchain, run the following command in the project's root directory.
 
 ```bash
-# Build the GCC toolchain
-make toolchain
+# Build the LLVM toolchain
+make toolchain-llvm
 ```
 
 Ara also requires an updated Spike ISA simulator, with support for the vector extension.
@@ -60,8 +60,10 @@ make verilator
 
 ## Configuration
 
-Ara's parameters are centralized in the `config` folder, in the `config.mk` file.
+Ara's parameters are centralized in the `config` folder, which provides several configurations to the vector machine.
 Please check `config/README.md` for more details.
+
+Prepend `config=chosen_ara_configuration` to your Makefile commands, or export the `ARA_CONFIGURATION` variable, to chose a configuration other than the `default` one.
 
 ## Software
 
@@ -93,7 +95,7 @@ cd hardware
 # Apply the patches (only need to run this once)
 make apply-patches
 # Only compile the hardware without running the simulation.
-make build
+make compile
 # Run the simulation with the *hello_world* binary loaded
 app=hello_world make sim
 # Run the simulation with the *some_binary* binary. This allows specifying the full path to the binary

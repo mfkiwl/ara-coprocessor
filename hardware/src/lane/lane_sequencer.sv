@@ -180,6 +180,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           swap_vs2_vd_op : pe_req_i.swap_vs2_vd_op,
           fp_rm          : pe_req_i.fp_rm,
           wide_fp_imm    : pe_req_i.wide_fp_imm,
+          fp_cvt_resize  : pe_req_i.fp_cvt_resize,
           vtype          : pe_req_i.vtype,
           default        : '0
         };
@@ -189,6 +190,13 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
         vfu_operation_d.vl = pe_req_i.vl / NrLanes;
         // If lane_id_i < vl % NrLanes, this lane has to execute one extra micro-operation.
         if (lane_id_i < pe_req_i.vl[idx_width(NrLanes)-1:0]) vfu_operation_d.vl += 1;
+
+        // Mute request if the instruction runs in the lane and the vl is zero.
+        if (vfu_operation_d.vl == '0 && (vfu_operation_d.vfu inside {VFU_Alu, VFU_MFpu})) begin
+          vfu_operation_valid_d = 1'b0;
+          // We are already done with this instruction
+          vinsn_done_d[pe_req_i.id] |= 1'b1;
+        end
 
         // Vector start calculation
         vfu_operation_d.vstart = pe_req_i.vstart / NrLanes;
@@ -377,20 +385,15 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
               VSLIDEUP: begin
                 // We need to trim full words from the end of the vector that are not used
                 // as operands by the slide unit.
-                automatic vlen_t vslideup_adj = pe_req_i.stride >> ($clog2(NrLanes) + int'(EW64) - int'(pe_req_i.eew_vs2));
-
                 // Since this request goes outside of the lane, we might need to request an
                 // extra operand regardless of whether it is valid in this lane or not.
-                operand_request_i[SlideAddrGenA].vl = pe_req_i.vl / NrLanes - vslideup_adj;
-
-                if ((operand_request_i[SlideAddrGenA].vl + vslideup_adj) * NrLanes != pe_req_i.vl)
-                  operand_request_i[SlideAddrGenA].vl += 1;
+                operand_request_i[SlideAddrGenA].vl =
+                  (pe_req_i.vl - pe_req_i.stride + NrLanes - 1) / NrLanes;
               end
               VSLIDEDOWN: begin
                 // We need to trim full words from the start of the vector that are not used
                 // as operands by the slide unit.
-                automatic vlen_t vslidedown_adj         = pe_req_i.stride >> ($clog2(NrLanes) + int'(EW64) - int'(pe_req_i.eew_vs2));
-                operand_request_i[SlideAddrGenA].vstart = vslidedown_adj;
+                operand_request_i[SlideAddrGenA].vstart = pe_req_i.stride / NrLanes;
 
                 // Since this request goes outside of the lane, we might need to request an
                 // extra operand regardless of whether it is valid in this lane or not.
@@ -398,9 +401,11 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
                 if (operand_request_i[SlideAddrGenA].vl * NrLanes != pe_req_i.vl)
                   operand_request_i[SlideAddrGenA].vl += 1;
 
-                // If the vslidedown stride is not a full VRF word, we will need to request an extra word
+                // If the vslidedown stride is not a full VRF word, we will need to request an extra
+                // word
                 if (!pe_req_i.use_scalar_op)
-                  if (pe_req_i.stride - (vslidedown_adj << ($clog2(NrLanes) + int'(EW64) - int'(pe_req_i.eew_vs2))) != 0)
+                  if ((pe_req_i.stride &
+                    ((vlen_t'(1) << ($clog2(NrLanes) + int'(EW64 - pe_req_i.eew_vs2))) - 1)) != 0)
                     operand_request_i[SlideAddrGenA].vl += 1;
               end
             endcase
@@ -421,13 +426,14 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
               VSLIDEUP: begin
                 // We need to trim full words from the end of the vector that are not used
                 // as operands by the slide unit.
-                automatic vlen_t vslideup_adj = (pe_req_i.stride / NrLanes / 8) >> (int'(EW64) - int'(pe_req_i.vtype.vsew));
-
                 // Since this request goes outside of the lane, we might need to request an
                 // extra operand regardless of whether it is valid in this lane or not.
-                operand_request_i[MaskM].vl = ((pe_req_i.vl / NrLanes / 8) >> (int'(EW64) - int'(pe_req_i.vtype.vsew))) - vslideup_adj;
+                operand_request_i[MaskM].vl =
+                  ((pe_req_i.vl - pe_req_i.stride + NrLanes - 1) / 8 / NrLanes)
+                  >> (int'(EW64) - int'(pe_req_i.vtype.vsew));
 
-                if (((operand_request_i[MaskM].vl + vslideup_adj) << (int'(EW64) - int'(pe_req_i.vtype.vsew))) * NrLanes * 8 != pe_req_i.vl)
+                if (((operand_request_i[MaskM].vl + pe_req_i.stride) <<
+                    (int'(EW64) - int'(pe_req_i.vtype.vsew)) * NrLanes * 8 != pe_req_i.vl))
                   operand_request_i[MaskM].vl += 1;
               end
               VSLIDEDOWN: begin
@@ -465,7 +471,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
               if ((operand_request_i[AluA].vl << (int'(EW64) - int'(pe_req_i.eew_vs1))) * NrLanes !=
                   pe_req_i.vl) operand_request_i[AluA].vl += 1;
             end
-            operand_request_push[AluA] = pe_req_i.use_vs1;
+            operand_request_push[AluA] = pe_req_i.use_vs1 && !(pe_req_i.op inside {[VMFEQ:VMFGE]});
 
             operand_request_i[AluB] = '{
               id     : pe_req_i.id,
@@ -491,7 +497,34 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
               if ((operand_request_i[AluB].vl << (int'(EW64) - int'(pe_req_i.eew_vs2))) * NrLanes !=
                   pe_req_i.vl) operand_request_i[AluB].vl += 1;
             end
-            operand_request_push[AluB] = pe_req_i.use_vs2;
+            operand_request_push[AluB] = pe_req_i.use_vs2 && !(pe_req_i.op inside {[VMFEQ:VMFGE]});
+
+            operand_request_i[MulFPUA] = '{
+              id     : pe_req_i.id,
+              vs     : pe_req_i.vs1,
+              eew    : pe_req_i.eew_vs1,
+              vtype  : pe_req_i.vtype,
+              vstart : vfu_operation_d.vstart,
+              hazard : pe_req_i.hazard_vs1 | pe_req_i.hazard_vd,
+              default: '0
+            };
+
+            // This is an operation that runs normally on the ALU, and then gets *condensed* and reshuffled at the Mask Unit.
+            operand_request_i[MulFPUA].vl = (pe_req_i.vl + NrLanes - 1) / NrLanes;
+            operand_request_push[MulFPUA] = pe_req_i.use_vs1 && pe_req_i.op inside {[VMFEQ:VMFGE]};
+
+            operand_request_i[MulFPUB] = '{
+              id     : pe_req_i.id,
+              vs     : pe_req_i.vs2,
+              eew    : pe_req_i.eew_vs2,
+              vtype  : pe_req_i.vtype,
+              vstart : vfu_operation_d.vstart,
+              hazard : pe_req_i.hazard_vs2 | pe_req_i.hazard_vd,
+              default: '0
+            };
+            // This is an operation that runs normally on the ALU, and then gets *condensed* and reshuffled at the Mask Unit.
+            operand_request_i[MulFPUB].vl = (pe_req_i.vl + NrLanes - 1) / NrLanes;
+            operand_request_push[MulFPUB] = pe_req_i.use_vs2 && pe_req_i.op inside {[VMFEQ:VMFGE]};
 
             operand_request_i[MaskB] = '{
               id     : pe_req_i.id,
